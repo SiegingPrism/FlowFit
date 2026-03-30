@@ -32,9 +32,6 @@
   if (window.supabaseClient) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     const isAuthPage = location.pathname.endsWith('login.html') || location.pathname.endsWith('signup.html');
-    if (!session && !isAuthPage && !location.pathname.endsWith('/')) {
-      // Allow root or force to login (well root isn't auth page, wait, root = index.html usually. Let's redirect root to login.html too!)
-    }
     if (!session && !isAuthPage) {
       window.location.replace('login.html');
       return;
@@ -386,6 +383,15 @@
 
       // Handle standard buttons & FABs globally
       const btn = e.target.closest('.btn, .fab');
+      if (e.target.closest('.schedule-card')) {
+        const scheduleCard = e.target.closest('.schedule-card');
+        if (e.target.closest('.icon-btn')) {
+           scheduleCard.remove();
+        } else {
+           openPomodoroModal();
+        }
+        return;
+      }
       if (btn) {
         const txt = btn.textContent.trim().toLowerCase();
 
@@ -431,17 +437,26 @@
           openAddTaskModal();
           return;
         } else if (txt === "+ add habit" || txt === "add habit") {
-          const name = prompt("What's the new habit?");
-          if (!name) return;
-          const category = prompt("Category? (Health, Personal, Work, Study)") || "Personal";
-          const id = slugify(name + '-' + Date.now());
-          if (!state.habits) state.habits = {};
-          state.habits[id] = { name, category, completed: false, streak: 0 };
+          openAddHabitModal();
+          return;
+        } else if (btn.classList.contains("save-daily-btn") || txt === "💾 save") {
+          const energy = document.getElementById("daily-energy-input")?.value || 50;
+          const mood = document.getElementById("daily-mood-input")?.value || 50;
+          if (!state.reviews) state.reviews = { daily: [] };
+          if (!state.reviews.daily) state.reviews.daily = [];
+          
+          state.reviews.daily.push({
+             date: new Date().toISOString(),
+             energy: parseInt(energy),
+             mood: parseInt(mood),
+             win: document.getElementById("daily-win-input")?.value || "",
+             obstacle: document.getElementById("daily-obstacle-input")?.value || "",
+             adjust: document.getElementById("daily-adjust-input")?.value || "",
+          });
           saveState();
-          initializeHabitRows();
-          initializeDashboardHabits();
           refreshDashboardSummaries();
-          toast("Habit added!");
+          toast("Daily review saved!");
+          location.hash = ""; 
           return;
         } else if (txt === "fetch steps" || txt === "send test email") {
           toast(txt.includes("fetch") ? "Pulled latest steps." : "Test email sent.");
@@ -593,10 +608,13 @@
         check.addEventListener('click', (e) => {
            e.stopPropagation();
            state.habits[habit.id].completed = !state.habits[habit.id].completed;
+           
+           if (!state.habits[habit.id].baseStreak) state.habits[habit.id].baseStreak = state.habits[habit.id].streak || 0;
+           
            if (state.habits[habit.id].completed) {
-             state.habits[habit.id].streak = (state.habits[habit.id].streak || 0) + 1;
+             state.habits[habit.id].streak = state.habits[habit.id].baseStreak + 1;
            } else {
-             state.habits[habit.id].streak = Math.max(0, (state.habits[habit.id].streak || 1) - 1);
+             state.habits[habit.id].streak = state.habits[habit.id].baseStreak;
            }
            saveState();
            initializeHabitRows();
@@ -663,18 +681,7 @@
     const addBtn = document.getElementById("add-template-btn");
     if (addBtn && !addBtn.dataset.wired) {
       addBtn.dataset.wired = "true";
-      addBtn.addEventListener("click", () => {
-         const name = prompt("Enter template name (e.g., Full Body, Core):");
-         if (!name) return;
-         const details = prompt("Enter details (e.g., 5 exercises · Strength):") || "Custom Workout";
-         
-         const id = slugify(`${name}-${Date.now()}`);
-         if (!state.templates) state.templates = {};
-         state.templates[id] = { name, details };
-         saveState();
-         toast("Template saved!");
-         initializeHealthTemplates();
-      });
+      addBtn.addEventListener("click", () => openAddTemplateModal());
     }
 
     const tList = Object.entries(state.templates || {}).map(([id, t]) => ({ id, ...t }));
@@ -831,10 +838,180 @@
     }
   }
 
+  function openAddHabitModal() {
+    let backdrop = document.getElementById('add-habit-modal');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'add-habit-modal';
+      backdrop.className = 'modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="modal-backdrop__hit" aria-label="Close dialog"></div>
+        <div class="modal">
+          <div class="modal__handle"></div>
+          <div class="flex-between" style="margin-bottom: 24px;">
+            <strong>Add New Habit</strong>
+            <button class="icon-btn close-btn" style="width: 32px; height: 32px;" aria-label="Close">×</button>
+          </div>
+          <input class="input-dark" type="text" id="habit-name-input" placeholder="e.g., Read 10 pages" style="margin-bottom: 12px; font-size: 1.1rem; padding: 14px 16px;" autofocus />
+          <select class="input-dark" id="habit-cat-select" style="margin-bottom: 16px;">
+            <option value="Personal">Personal</option>
+            <option value="Health">Health</option>
+            <option value="Work">Work</option>
+            <option value="Study">Study</option>
+          </select>
+          <button type="button" class="btn btn--primary btn--block save-btn" style="padding: 14px;">Create Habit</button>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      
+      backdrop.querySelector('.modal-backdrop__hit').addEventListener('click', () => backdrop.style.display = 'none');
+      backdrop.querySelector('.close-btn').addEventListener('click', () => backdrop.style.display = 'none');
+      
+      backdrop.querySelector('.save-btn').addEventListener('click', () => {
+         const name = document.getElementById('habit-name-input').value.trim();
+         if (!name) return;
+         const category = document.getElementById('habit-cat-select').value || "Personal";
+         const id = slugify(name + '-' + Date.now());
+         if (!state.habits) state.habits = {};
+         state.habits[id] = { name, category, completed: false, streak: 0, baseStreak: 0 };
+         saveState();
+         initializeHabitRows();
+         initializeDashboardHabits();
+         refreshDashboardSummaries();
+         toast("Habit added!");
+         backdrop.style.display = 'none';
+      });
+    }
+    
+    document.getElementById('habit-name-input').value = '';
+    backdrop.style.display = 'flex';
+    setTimeout(() => document.getElementById('habit-name-input').focus(), 50);
+  }
+
+  function openAddTemplateModal() {
+    let backdrop = document.getElementById('add-template-modal');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'add-template-modal';
+      backdrop.className = 'modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="modal-backdrop__hit" aria-label="Close dialog"></div>
+        <div class="modal">
+          <div class="modal__handle"></div>
+          <div class="flex-between" style="margin-bottom: 24px;">
+            <strong>Add Workout Template</strong>
+            <button class="icon-btn close-btn" style="width: 32px; height: 32px;" aria-label="Close">×</button>
+          </div>
+          <input class="input-dark" type="text" id="template-name-input" placeholder="e.g., Full Body, Core" style="margin-bottom: 12px; font-size: 1.1rem; padding: 14px 16px;" autofocus />
+          <input class="input-dark" type="text" id="template-details-input" placeholder="e.g., 5 exercises · Strength" style="margin-bottom: 16px; font-size: 1.1rem; padding: 14px 16px;" />
+          <button type="button" class="btn btn--primary btn--block save-btn" style="padding: 14px;">Save Template</button>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      
+      backdrop.querySelector('.modal-backdrop__hit').addEventListener('click', () => backdrop.style.display = 'none');
+      backdrop.querySelector('.close-btn').addEventListener('click', () => backdrop.style.display = 'none');
+      
+      backdrop.querySelector('.save-btn').addEventListener('click', () => {
+         const name = document.getElementById('template-name-input').value.trim();
+         if (!name) return;
+         const details = document.getElementById('template-details-input').value.trim() || "Custom Workout";
+         const id = slugify(`${name}-${Date.now()}`);
+         if (!state.templates) state.templates = {};
+         state.templates[id] = { name, details };
+         saveState();
+         toast("Template saved!");
+         initializeHealthTemplates();
+         backdrop.style.display = 'none';
+      });
+    }
+    
+    document.getElementById('template-name-input').value = '';
+    document.getElementById('template-details-input').value = '';
+    backdrop.style.display = 'flex';
+    setTimeout(() => document.getElementById('template-name-input').focus(), 50);
+  }
+
+  let pomoInterval = null;
+  let pomoSeconds = 25 * 60;
+
+  function openPomodoroModal() {
+    let backdrop = document.getElementById('pomodoro-modal');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'pomodoro-modal';
+      backdrop.className = 'modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="modal-backdrop__hit" aria-label="Close dialog"></div>
+        <div class="modal" style="text-align: center;">
+          <div class="modal__handle"></div>
+          <div class="flex-between" style="margin-bottom: 24px;">
+            <strong>🍅 Focus Timer</strong>
+            <button class="icon-btn close-btn" style="width: 32px; height: 32px;" aria-label="Close">×</button>
+          </div>
+          <h1 id="pomo-time" style="font-size: 4rem; margin: 20px 0; font-family: monospace; color: var(--accent);">25:00</h1>
+          <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+             <button type="button" id="pomo-start-btn" class="btn btn--primary" style="flex: 1;">Start Focus</button>
+             <button type="button" id="pomo-reset-btn" class="btn btn--outline" style="flex: 1;">Reset</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      
+      const timeDisplay = backdrop.querySelector('#pomo-time');
+      const startBtn = backdrop.querySelector('#pomo-start-btn');
+      const resetBtn = backdrop.querySelector('#pomo-reset-btn');
+      
+      const updateDisplay = () => {
+         timeDisplay.textContent = `${String(Math.floor(pomoSeconds/60)).padStart(2,'0')}:${String(pomoSeconds%60).padStart(2,'0')}`;
+      };
+      
+      backdrop.querySelector('.modal-backdrop__hit').addEventListener('click', () => backdrop.style.display = 'none');
+      backdrop.querySelector('.close-btn').addEventListener('click', () => backdrop.style.display = 'none');
+      
+      startBtn.addEventListener('click', () => {
+         if (startBtn.textContent === "Start Focus" || startBtn.textContent === "Resume") {
+            startBtn.textContent = "Pause";
+            pomoInterval = setInterval(() => {
+               if (pomoSeconds > 0) {
+                 pomoSeconds--;
+                 updateDisplay();
+               } else {
+                 clearInterval(pomoInterval);
+                 pomoInterval = null;
+                 startBtn.textContent = "Start Focus";
+                 toast("Session complete!");
+                 
+                 if (!state.stats) state.stats = { workoutsLogged: 0, focusMinutes: 0, focusSessions: 0 };
+                 state.stats.focusSessions = (state.stats.focusSessions || 0) + 1;
+                 state.stats.focusMinutes = (state.stats.focusMinutes || 0) + 25;
+                 saveState();
+                 refreshDashboardSummaries();
+               }
+            }, 1000);
+         } else {
+            clearInterval(pomoInterval);
+            pomoInterval = null;
+            startBtn.textContent = "Resume";
+         }
+      });
+      
+      resetBtn.addEventListener('click', () => {
+         clearInterval(pomoInterval);
+         pomoInterval = null;
+         pomoSeconds = 25 * 60;
+         startBtn.textContent = "Start Focus";
+         updateDisplay();
+      });
+    }
+    backdrop.style.display = 'flex';
+  }
+
   function appendTaskCardToTasksPage(task, id) {
     const main = document.querySelector("main");
     if (!main) return;
 
+    const isUrgent = String(task.priority).toLowerCase() === "urgent";
     const card = document.createElement("article");
     card.className = "task-card";
     card.dataset.taskId = id;
@@ -1101,6 +1278,37 @@
     const statsValues = Array.from(document.querySelectorAll("p, strong")).filter((el) =>
       /(Task Completion|Orphan Tasks|Productivity \(7d\))/i.test(el.textContent)
     );
+
+    const reviews = state.reviews?.daily || [];
+    let avgMood = 0;
+    let avgEnergy = 0;
+    if (reviews.length > 0) {
+       avgMood = reviews.reduce((acc, r) => acc + (r.mood || 50), 0) / reviews.length;
+       avgEnergy = reviews.reduce((acc, r) => acc + (r.energy || 50), 0) / reviews.length;
+    }
+    const mEl = document.getElementById("insight-avg-mood");
+    if (mEl) mEl.textContent = reviews.length ? (avgMood / 10).toFixed(1) : "--"; 
+    const eEl = document.getElementById("insight-avg-energy");
+    if (eEl) eEl.textContent = reviews.length ? Math.round(avgEnergy) + "%" : "--%";
+    
+    // Update habit stability percentage
+    const hEl = document.getElementById("insight-habit-stability");
+    if (hEl) {
+       let tot = 0, comp = 0;
+       Object.values(state.habits || {}).forEach(h => { tot++; if(h.completed) comp++; });
+       hEl.textContent = tot > 0 ? Math.round((comp/tot)*100) + "%" : "--%";
+    }
+    
+    // Wire index.html dashboard elements
+    const dashSleep = document.getElementById("dash-sleep-val");
+    if (dashSleep) dashSleep.textContent = state.stats?.sleep ? parseFloat(state.stats.sleep).toFixed(1) + "h" : "--";
+    const dashSteps = document.getElementById("dash-steps-val");
+    if (dashSteps) dashSteps.textContent = state.stats?.steps || "0";
+    const dashWater = document.getElementById("dash-water-val");
+    if (dashWater) dashWater.textContent = state.stats?.water ? parseFloat(state.stats.water).toFixed(1) + "L" : "0.0L";
+    const dashMood = document.getElementById("dash-mood-val");
+    if (dashMood) dashMood.textContent = reviews.length ? (avgMood / 10).toFixed(1) : "--";
+
     statsValues.forEach((node) => {
       const parent = node.parentElement;
       if (!parent) return;
