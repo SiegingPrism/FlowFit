@@ -30,6 +30,7 @@
   syncGreetingDate();
   initializeProfile();
   initializeDashboardTasks();
+  initializeDashboardHabits();
   initializeTaskCards();
   initializeHabitRows();
   initializeAddTaskButtons();
@@ -240,38 +241,91 @@
     });
   }
 
+  function calculateRole() {
+    const ts = Object.values(state.tasks).filter(t => t.completed).length;
+    const hs = Object.values(state.habits).filter(h => h.completed).length;
+    const total = ts + hs;
+    if (total < 5) return "New Member";
+    if (total < 15) return "Rookie";
+    if (total < 35) return "Explorer";
+    if (total < 75) return "Achiever";
+    return "Master";
+  }
+
   function initializeProfile() {
+    state.profile.role = calculateRole(); // Compute dynamic role based on dedication
+
     const nameNodes = document.querySelectorAll(".settings-profile p");
     if (nameNodes.length >= 2) {
       nameNodes[0].textContent = state.profile.name;
       nameNodes[1].textContent = state.profile.role;
     }
 
-    const avatar = document.querySelector(".avatar-lg");
-    if (avatar) {
-      avatar.textContent = state.profile.name.charAt(0).toUpperCase();
-    }
+    const avatars = document.querySelectorAll(".avatar-lg");
+    avatars.forEach(avatar => {
+      if (state.profile.avatarImage) {
+        avatar.innerHTML = `<img src="${state.profile.avatarImage}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-round);">`;
+        avatar.style.border = "none";
+        avatar.style.background = "transparent";
+      } else {
+        avatar.innerHTML = "";
+        avatar.textContent = state.profile.name.charAt(0).toUpperCase();
+        avatar.style.border = "";
+        avatar.style.background = "";
+      }
+    });
   }
 
   function initializeProfileEditor() {
     const nameInput = document.querySelector("#profile-name");
-    const roleInput = document.querySelector("#profile-role");
     const saveButton = document.querySelector('[data-action="save-profile"]');
-    if (!nameInput || !roleInput || !saveButton) return;
+    if (!nameInput || !saveButton) return;
 
     nameInput.value = state.profile.name;
-    roleInput.value = state.profile.role;
+
+    const fileInput = document.getElementById("profile-avatar-upload");
+    const preview = document.getElementById("profile-avatar-preview");
+    
+    if (preview) {
+      if (state.profile.avatarImage) {
+        preview.innerHTML = `<img src="${state.profile.avatarImage}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-round);">`;
+        preview.style.border = "none";
+        preview.style.background = "transparent";
+      } else {
+        preview.textContent = state.profile.name.charAt(0).toUpperCase();
+      }
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          state.profile.avatarImage = re.target.result;
+          if (preview) {
+             preview.innerHTML = `<img src="${state.profile.avatarImage}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-round);">`;
+             preview.style.border = "none";
+             preview.style.background = "transparent";
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     saveButton.addEventListener("click", () => {
       const name = nameInput.value.trim();
-      const role = roleInput.value.trim();
       if (!name) {
         toast("Name is required.");
         return;
       }
       state.profile.name = name;
-      state.profile.role = role || "Professional";
+      
       saveState();
-      toast("Profile updated");
+      toast("Profile updated successfully!");
+      setTimeout(() => {
+        window.location.href = "settings.html";
+      }, 700);
     });
   }
 
@@ -303,14 +357,18 @@
       });
     });
 
-    const connectGoogleButton = Array.from(document.querySelectorAll(".btn")).find(
-      (btn) => btn.textContent.trim() === "Connect"
-    );
-    if (connectGoogleButton) {
-      connectGoogleButton.addEventListener("click", () => {
-        toast("Google connection flow will be wired to OAuth in production.");
-      });
-    }
+    document.querySelectorAll(".btn").forEach(btn => {
+      const txt = btn.textContent.trim().toLowerCase();
+      if (txt === "plan") {
+        btn.addEventListener('click', () => {
+          toast("Workout planned and added to schedule!");
+        });
+      } else if (txt === "connect") {
+        btn.addEventListener("click", () => {
+          toast("Google connection flow will be wired to OAuth in production.");
+        });
+      }
+    });
 
     const quickActionButtons = Array.from(document.querySelectorAll(".btn.btn--ghost")).filter(
       (btn) => /fetch steps|send test email/i.test(btn.textContent)
@@ -333,15 +391,17 @@
       });
     });
 
-    const logFab = Array.from(document.querySelectorAll(".fab")).find(b => b.textContent.trim() === "Log");
-    if (logFab) {
-      logFab.addEventListener('click', () => {
-        state.stats.workoutsLogged += 1;
-        saveState();
-        refreshWorkoutNodes();
-        toast("Quick Log added!");
-      });
-    }
+    document.querySelectorAll(".fab").forEach(btn => {
+      const txt = btn.textContent.trim().toLowerCase();
+      if (txt === "log" || txt === "+ log") {
+        btn.addEventListener('click', () => {
+          state.stats.workoutsLogged += 1;
+          saveState();
+          refreshWorkoutNodes();
+          toast("Quick Log added!");
+        });
+      }
+    });
 
     const claimButtons = Array.from(document.querySelectorAll(".btn")).filter(b => b.textContent.includes("Claim"));
     claimButtons.forEach(btn => {
@@ -428,15 +488,42 @@
   }
 
   function initializeAddTaskButtons() {
-    const addButtons = Array.from(document.querySelectorAll(".fab, .btn")).filter((button) =>
-      /^\+\s*add$/i.test(button.textContent.trim())
-    );
-    if (!addButtons.length) return;
+    document.querySelectorAll(".fab, .btn").forEach(button => {
+      const txt = button.textContent.trim().toLowerCase();
+      if (txt === "+ add" || txt === "add") {
+        button.addEventListener("click", () => {
+          openAddTaskModal();
+        });
+      }
+    });
+  }
 
-    addButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        openAddTaskModal();
+  function initializeDashboardHabits() {
+    const container = document.getElementById("dashboard-habits-container");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    const habitsList = Object.entries(state.habits).map(([id, val]) => ({ id, ...val }));
+    
+    if (!habitsList.length) {
+      container.innerHTML = `<p class="muted" style="margin:0;font-size:0.8rem;">No habits tracked yet.</p>`;
+      return;
+    }
+
+    habitsList.forEach(habit => {
+      const span = document.createElement("span");
+      span.className = habit.completed ? "badge badge--accent" : "badge badge--outline";
+      span.style.padding = "8px 12px";
+      span.style.cursor = "pointer";
+      span.textContent = (habit.completed ? "✓ " : "○ ") + habit.name;
+      
+      span.addEventListener("click", () => {
+        state.habits[habit.id].completed = !state.habits[habit.id].completed;
+        saveState();
+        initializeDashboardHabits();
+        refreshDashboardSummaries();
       });
+      container.appendChild(span);
     });
   }
 
