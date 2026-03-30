@@ -17,8 +17,14 @@
     <main>
       <p class="muted" style="padding: 16px 16px 8px;">Update your personal details.</p>
       <div class="card">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div class="avatar-lg" id="profile-avatar-preview" style="cursor: pointer; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; overflow: hidden;" onclick="document.getElementById('profile-avatar-upload').click()">
+            A
+          </div>
+          <button type="button" class="btn btn--ghost" onclick="document.getElementById('profile-avatar-upload').click()">Change Avatar</button>
+          <input type="file" id="profile-avatar-upload" accept="image/*" style="display: none;" />
+        </div>
         <input class="input-dark" type="text" id="profile-name" placeholder="Name" />
-        <input class="input-dark" type="text" id="profile-role" placeholder="Role" />
         <button type="button" class="btn btn--primary btn--block" data-action="save-profile">Save Profile</button>
       </div>
     </main>
