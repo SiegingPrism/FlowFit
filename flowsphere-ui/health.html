@@ -83,11 +83,11 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; text-align: center;">
           <div>
             <div style="font-size: 1.4rem;">👟</div>
-            <strong>8000 Steps</strong>
+            <strong id="gym-steps">8000 Steps</strong>
           </div>
           <div>
             <div style="font-size: 1.4rem;">🏋️</div>
-            <strong>0 Workouts</strong>
+            <strong id="gym-workouts">0 Workouts</strong>
           </div>
         </div>
       </div>
@@ -95,26 +95,17 @@
       <div class="card">
         <div class="flex-between">
           <span>💧 <strong>Hydration</strong></span>
+          <button type="button" class="btn btn--outline" style="font-size: 0.75rem; padding: 4px 8px;" id="add-water-btn">+ Drink</button>
         </div>
-        <p style="margin: 12px 0 0; font-size: 1.1rem;"><strong>2.0L / 2.5L</strong></p>
-        <div class="progress-bar"><div class="progress-bar__fill"></div></div>
+        <p style="margin: 12px 0 0; font-size: 1.1rem;"><strong id="gym-water-text">0.0L / 2.5L</strong></p>
+        <div class="progress-bar"><div class="progress-bar__fill" id="gym-water-bar" style="width: 0%;"></div></div>
       </div>
 
       <div class="card">
         <div class="flex-between">
           <span>🏋️ <strong>Recent Workouts</strong></span>
         </div>
-        <div class="flex-between" style="padding: 10px 0; border-bottom: 1px solid var(--border);">
-          <span>Running</span>
-          <span class="muted">30min · Moderate</span>
-        </div>
-        <div class="flex-between" style="padding: 10px 0; border-bottom: 1px solid var(--border);">
-          <span>Yoga</span>
-          <span class="muted">45min · Light</span>
-        </div>
-        <div class="flex-between" style="padding: 10px 0;">
-          <span>Weight Training</span>
-          <span class="muted">60min · Intense</span>
+        <div id="recent-workouts-container">
         </div>
       </div>
     </main>
