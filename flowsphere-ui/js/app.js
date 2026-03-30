@@ -350,68 +350,59 @@
   }
 
   function wireGlobalActions() {
-    document.querySelectorAll('a[aria-label="Notifications"]').forEach((link) => {
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
+    document.addEventListener("click", (e) => {
+      // Handle links
+      const link = e.target.closest('a[aria-label="Notifications"]');
+      if (link) {
+        e.preventDefault();
         toast("No new notifications");
-      });
-    });
-
-    document.querySelectorAll(".btn").forEach(btn => {
-      const txt = btn.textContent.trim().toLowerCase();
-      if (txt === "plan") {
-        btn.addEventListener('click', () => {
-          toast("Workout planned and added to schedule!");
-        });
-      } else if (txt === "connect") {
-        btn.addEventListener("click", () => {
-          toast("Google connection flow will be wired to OAuth in production.");
-        });
+        return;
       }
-    });
 
-    const quickActionButtons = Array.from(document.querySelectorAll(".btn.btn--ghost")).filter(
-      (btn) => /fetch steps|send test email/i.test(btn.textContent)
-    );
-    quickActionButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        toast(btn.textContent.includes("Fetch") ? "Pulled latest steps." : "Test email sent.");
-      });
-    });
+      // Handle standard buttons & FABs globally
+      const btn = e.target.closest('.btn, .fab');
+      if (btn) {
+        const txt = btn.textContent.trim().toLowerCase();
 
-    const removeButtons = document.querySelectorAll('.schedule-card .icon-btn');
-    removeButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const card = e.target.closest('.schedule-card');
+        // Specific named button actions
+        if (txt === "plan") {
+          toast("Workout planned and added to schedule!");
+          return;
+        } else if (txt === "connect") {
+          toast("Google connection flow will be wired to OAuth in production.");
+          return;
+        } else if (txt === "log" || txt === "+ log" || txt === "quick log") {
+          // Both FAB and standard quick log buttons
+          state.stats.workoutsLogged += 1;
+          saveState();
+          refreshWorkoutNodes();
+          toast("Workout logged!");
+          return;
+        } else if (txt === "+ add" || txt === "add") {
+          openAddTaskModal();
+          return;
+        } else if (txt === "fetch steps" || txt === "send test email") {
+          toast(txt.includes("fetch") ? "Pulled latest steps." : "Test email sent.");
+          return;
+        } else if (txt.includes("claim") && !btn.disabled) {
+          toast("Rewards claimed! XP and Coins added.");
+          btn.disabled = true;
+          btn.textContent = "✓ Claimed";
+          return;
+        }
+      }
+
+      // Handle remove buttons
+      const removeBtn = e.target.closest('.schedule-card .icon-btn');
+      if (removeBtn) {
+        const card = removeBtn.closest('.schedule-card');
         if (card) {
           card.style.opacity = '0';
           setTimeout(() => card.remove(), 200);
           toast("Event removed from schedule.");
         }
-      });
-    });
-
-    document.querySelectorAll(".fab").forEach(btn => {
-      const txt = btn.textContent.trim().toLowerCase();
-      if (txt === "log" || txt === "+ log") {
-        btn.addEventListener('click', () => {
-          state.stats.workoutsLogged += 1;
-          saveState();
-          refreshWorkoutNodes();
-          toast("Quick Log added!");
-        });
+        return;
       }
-    });
-
-    const claimButtons = Array.from(document.querySelectorAll(".btn")).filter(b => b.textContent.includes("Claim"));
-    claimButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (!btn.disabled && btn.textContent.includes("Claim")) {
-          toast("Rewards claimed! XP and Coins added.");
-          btn.disabled = true;
-          btn.textContent = "✓ Claimed";
-        }
-      });
     });
   }
 
@@ -488,14 +479,7 @@
   }
 
   function initializeAddTaskButtons() {
-    document.querySelectorAll(".fab, .btn").forEach(button => {
-      const txt = button.textContent.trim().toLowerCase();
-      if (txt === "+ add" || txt === "add") {
-        button.addEventListener("click", () => {
-          openAddTaskModal();
-        });
-      }
-    });
+    // Disabled as it is now handled via global delegated events in wireGlobalActions()
   }
 
   function initializeDashboardHabits() {
