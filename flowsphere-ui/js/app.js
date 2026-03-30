@@ -29,6 +29,7 @@
   wireGlobalActions();
   syncGreetingDate();
   initializeProfile();
+  initializeDashboardTasks();
   initializeTaskCards();
   initializeHabitRows();
   initializeAddTaskButtons();
@@ -82,8 +83,8 @@
         
         // Give them some default onboarding tasks
         finalState.tasks = {
-          "welcome": { title: "Welcome to FlowSphere!", completed: false, createdAt: new Date().toISOString() },
-          "setup-profile": { title: "Go to Settings and complete your profile", completed: false, createdAt: new Date().toISOString() }
+          "welcome": { title: "Welcome to FlowSphere!", completed: false, createdAt: new Date().toISOString(), duration: 5, priority: "Urgent" },
+          "setup-profile": { title: "Go to Settings and complete your profile", completed: false, createdAt: new Date().toISOString(), duration: 15, priority: "High" }
         };
 
         // Create their remote state baseline so it persists
@@ -178,12 +179,64 @@
 
   function syncGreetingDate() {
     const greetingDate = document.querySelector(".greeting-date");
-    if (!greetingDate) return;
-    const now = new Date();
-    greetingDate.textContent = now.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
+    if (greetingDate) {
+      const now = new Date();
+      greetingDate.textContent = now.toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      });
+    }
+
+    const greeting = document.querySelector(".greeting");
+    if (greeting) {
+      const hour = new Date().getHours();
+      let timeOfDay = "evening";
+      if (hour < 12) timeOfDay = "morning";
+      else if (hour < 17) timeOfDay = "afternoon";
+      const userFirstName = state.profile.name.split(' ')[0] || "User";
+      greeting.innerHTML = `Good ${timeOfDay}, ${escapeHtml(userFirstName)}! <span style="font-size: 1.1em">👋</span>`;
+    }
+  }
+
+  function initializeDashboardTasks() {
+    const container = document.getElementById("dashboard-tasks-container");
+    if (!container) return;
+    
+    // Get top 3 pending tasks from personalized state
+    const allTasks = Object.entries(state.tasks).map(([id, value]) => ({ id, ...value }));
+    const tasksToRender = allTasks.filter(task => !task.completed).slice(0, 3);
+    
+    container.innerHTML = "";
+    if (!tasksToRender.length) {
+      container.innerHTML = `<p class="muted" style="margin-top: 10px;">You're all caught up! Use + Add to create a priority task.</p>`;
+      return;
+    }
+
+    tasksToRender.forEach(task => {
+      const isUrgent = String(task.priority).toLowerCase() === "urgent";
+      const card = document.createElement("article");
+      card.className = "task-card";
+      card.dataset.taskId = task.id;
+      card.style.setProperty("--strip", isUrgent ? "var(--red)" : "var(--accent)");
+      
+      card.innerHTML = `
+        <div>
+          <h3 class="task-card__title">${escapeHtml(task.title)}</h3>
+          <p class="task-card__desc">${escapeHtml(task.priority || "Medium")} priority task</p>
+          <div class="task-meta">
+            <span>📅 ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+            <span>⏱ ${escapeHtml(task.duration || "30")}m</span>
+            <span class="pill">${escapeHtml(task.priority || "Medium")}</span>
+            <span class="pill">Planned</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+          ${isUrgent ? '<span class="badge badge--red">Urgent</span>' : ''}
+          <span class="checkbox-ring" role="button" tabindex="0" aria-label="Toggle ${escapeHtml(task.title)}"></span>
+        </div>
+      `;
+      container.appendChild(card);
     });
   }
 
