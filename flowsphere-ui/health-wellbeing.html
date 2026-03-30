@@ -37,14 +37,17 @@
       <div class="card">
         <div class="flex-between"><span>🚶 <strong>Activity</strong></span></div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; text-align: center;">
-          <div><strong>8000</strong><div class="muted">Steps</div></div>
-          <div><strong>0</strong><div class="muted">Workouts</div></div>
+          <div><strong id="gym-steps-2">8000</strong><div class="muted">Steps</div></div>
+          <div><strong id="gym-workouts-2">0</strong><div class="muted">Workouts</div></div>
         </div>
       </div>
       <div class="card">
-        <div class="flex-between"><span>💧 <strong>Hydration</strong></span></div>
-        <p><strong>2.0L / 2.5L</strong></p>
-        <div class="progress-bar"><div class="progress-bar__fill"></div></div>
+        <div class="flex-between">
+          <span>💧 <strong>Hydration</strong></span>
+          <button type="button" class="btn btn--outline" style="font-size: 0.75rem; padding: 4px 8px;" id="add-water-btn-2">+ Drink</button>
+        </div>
+        <p><strong id="gym-water-text-2">0.0L / 2.5L</strong></p>
+        <div class="progress-bar"><div class="progress-bar__fill" id="gym-water-bar-2" style="width: 0%;"></div></div>
       </div>
       <div class="card">
         <div class="flex-between"><span>😊 <strong>Mood Tracking</strong></span></div>
