@@ -25,8 +25,21 @@
     stats: {
       workoutsLogged: 0,
       focusMinutes: 75,
+      focusSessions: 2,
     },
   };
+
+  if (window.supabaseClient) {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    const isAuthPage = location.pathname.endsWith('login.html') || location.pathname.endsWith('signup.html');
+    if (!session && !isAuthPage && !location.pathname.endsWith('/')) {
+      // Allow root or force to login (well root isn't auth page, wait, root = index.html usually. Let's redirect root to login.html too!)
+    }
+    if (!session && !isAuthPage) {
+      window.location.replace('login.html');
+      return;
+    }
+  }
 
   const state = await loadState();
   ensureToastWrap();
@@ -37,6 +50,7 @@
   initializeDashboardTasks();
   initializeDashboardHabits();
   initializeHealthTemplates();
+  initializeHealthPage();
   initializeTaskCards();
   initializeHabitRows();
   initializeAddTaskButtons();
@@ -240,7 +254,12 @@
         </div>
         <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
           ${isUrgent ? '<span class="badge badge--red">Urgent</span>' : ''}
-          <span class="checkbox-ring" role="button" tabindex="0" aria-label="Toggle ${escapeHtml(task.title)}"></span>
+          <div style="display: flex; align-items: center; gap: 12px; justify-content: flex-end;">
+            <button class="icon-btn del-task-btn" style="color: var(--red); padding: 4px;" aria-label="Delete">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+            <span class="checkbox-ring" role="button" tabindex="0" aria-label="Toggle ${escapeHtml(task.title)}"></span>
+          </div>
         </div>
       `;
       container.appendChild(card);
@@ -391,14 +410,38 @@
           return;
         } else if (txt === "log" || txt === "+ log" || txt === "quick log") {
           // Both FAB and standard quick log buttons
-          if (!state.stats) state.stats = { workoutsLogged: 0, focusMinutes: 75 };
+          if (!state.stats) state.stats = { workoutsLogged: 0, focusMinutes: 75, water: 0, steps: 0, recentWorkouts: [] };
           state.stats.workoutsLogged = (parseInt(state.stats.workoutsLogged) || 0) + 1;
+          if (!state.stats.recentWorkouts) state.stats.recentWorkouts = [];
+          state.stats.recentWorkouts.unshift({ name: "Quick Workout", details: "Logged manually" });
+          if (state.stats.recentWorkouts.length > 5) state.stats.recentWorkouts.pop();
           saveState();
           refreshWorkoutNodes();
+          initializeHealthPage();
           toast("Workout logged!");
+          return;
+        } else if (txt === "+ drink" || txt === "drink") {
+          if (!state.stats) state.stats = { workoutsLogged: 0, focusMinutes: 75, water: 0, steps: 0, recentWorkouts: [] };
+          state.stats.water = parseFloat((state.stats.water || 0)) + 0.25;
+          saveState();
+          initializeHealthPage();
+          toast("Drank 250ml of water 💧");
           return;
         } else if (txt === "+ add" || txt === "add") {
           openAddTaskModal();
+          return;
+        } else if (txt === "+ add habit" || txt === "add habit") {
+          const name = prompt("What's the new habit?");
+          if (!name) return;
+          const category = prompt("Category? (Health, Personal, Work, Study)") || "Personal";
+          const id = slugify(name + '-' + Date.now());
+          if (!state.habits) state.habits = {};
+          state.habits[id] = { name, category, completed: false, streak: 0 };
+          saveState();
+          initializeHabitRows();
+          initializeDashboardHabits();
+          refreshDashboardSummaries();
+          toast("Habit added!");
           return;
         } else if (txt === "fetch steps" || txt === "send test email") {
           toast(txt.includes("fetch") ? "Pulled latest steps." : "Test email sent.");
@@ -458,6 +501,34 @@
         refreshDashboardSummaries();
       };
 
+      const delTaskBtn = card.querySelector(".del-task-btn");
+      if (delTaskBtn) {
+        delTaskBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm("Delete this task?")) {
+            delete state.tasks[id];
+            saveState();
+            initializeDashboardTasks();
+            initializeTaskCards();
+            refreshDashboardSummaries();
+          }
+        });
+      }
+
+      const delDashBtn = card.querySelector(".del-dash-task-btn");
+      if (delDashBtn) {
+        delDashBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm("Delete this task?")) {
+            delete state.tasks[id];
+            saveState();
+            initializeDashboardTasks();
+            initializeTaskCards();
+            refreshDashboardSummaries();
+          }
+        });
+      }
+
       checkbox.addEventListener("click", toggle);
       checkbox.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -471,30 +542,83 @@
   }
 
   function initializeHabitRows() {
-    const rows = Array.from(document.querySelectorAll(".habit-row"));
-    if (!rows.length) return;
+    const listContainer = document.getElementById("habits-list-page-container");
+    if (!listContainer) return;
 
-    rows.forEach((row) => {
-      const title = row.querySelector("strong")?.textContent.trim();
-      if (!title) return;
-      const id = slugify(title);
-      row.dataset.habitId = id;
+    listContainer.innerHTML = "";
+    
+    // Group habits by category
+    const habitsList = Object.entries(state.habits || {}).map(([id, h]) => ({ id, ...h }));
+    
+    if (!habitsList.length) {
+      listContainer.innerHTML = `<p class="muted" style="text-align: center; margin-top: 40px;">No habits yet. Click + Add Habit to start tracking!</p>`;
+      return;
+    }
 
-      if (!(id in state.habits)) {
-        state.habits[id] = { name: title, completed: true };
-      }
+    const categories = Array.from(new Set(habitsList.map(h => h.category || 'Personal')));
+    
+    categories.forEach(cat => {
+      const catHabits = habitsList.filter(h => (h.category || 'Personal') === cat);
+      if (!catHabits.length) return;
+      
+      const title = document.createElement('p');
+      title.className = "cat-title";
+      
+      // Auto assign icon based on cat string
+      const icon = cat.toLowerCase().includes('health') ? '❤️' : 
+                   cat.toLowerCase().includes('work') ? '💼' :
+                   cat.toLowerCase().includes('study') ? '🎓' : '👤';
+                   
+      title.textContent = `${icon} ${cat}`;
+      listContainer.appendChild(title);
+      
+      catHabits.forEach(habit => {
+        const row = document.createElement("article");
+        row.className = `habit-row ${habit.completed ? 'is-complete' : ''}`;
+        
+        row.innerHTML = `
+          <div class="habit-check">
+            <svg viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div style="flex: 1;">
+            <strong>${escapeHtml(habit.name)}</strong>
+            <p class="muted" style="margin: 6px 0 0; font-size: 0.78rem;">🔥 ${habit.streak || 0} day streak · Daily</p>
+          </div>
+          <button class="icon-btn" style="color: var(--red); padding: 4px;" aria-label="Delete">
+            <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        `;
+        
+        const check = row.querySelector('.habit-check');
+        check.addEventListener('click', (e) => {
+           e.stopPropagation();
+           state.habits[habit.id].completed = !state.habits[habit.id].completed;
+           if (state.habits[habit.id].completed) {
+             state.habits[habit.id].streak = (state.habits[habit.id].streak || 0) + 1;
+           } else {
+             state.habits[habit.id].streak = Math.max(0, (state.habits[habit.id].streak || 1) - 1);
+           }
+           saveState();
+           initializeHabitRows();
+           initializeDashboardHabits();
+           refreshDashboardSummaries();
+        });
+        
+        const delBtn = row.querySelector('.icon-btn');
+        delBtn.addEventListener('click', (e) => {
+           e.stopPropagation();
+           if (confirm("Delete this habit forever?")) {
+              delete state.habits[habit.id];
+              saveState();
+              initializeHabitRows();
+              initializeDashboardHabits();
+              refreshDashboardSummaries();
+           }
+        });
 
-      row.classList.toggle("is-complete", state.habits[id].completed);
-
-      row.addEventListener("click", () => {
-        state.habits[id].completed = !state.habits[id].completed;
-        row.classList.toggle("is-complete", state.habits[id].completed);
-        saveState();
-        refreshDashboardSummaries();
+        listContainer.appendChild(row);
       });
     });
-
-    saveState();
   }
 
   function initializeAddTaskButtons() {
@@ -573,6 +697,56 @@
       `;
       container.appendChild(row);
     });
+  }
+
+  function initializeHealthPage() {
+    const water = parseFloat(state.stats?.water || 0);
+    const steps = state.stats?.steps || 0;
+    const workouts = parseInt(state.stats?.workoutsLogged || 0);
+    
+    const stepEl1 = document.getElementById('gym-steps');
+    if (stepEl1) stepEl1.textContent = `${steps} Steps`;
+    
+    const stepEl2 = document.getElementById('gym-steps-2');
+    if (stepEl2) stepEl2.textContent = steps;
+    
+    const wEl1 = document.getElementById('gym-workouts');
+    if (wEl1) wEl1.textContent = `${workouts} Workouts`;
+    
+    const wEl2 = document.getElementById('gym-workouts-2');
+    if (wEl2) wEl2.textContent = workouts;
+    
+    const waterTexts = [document.getElementById('gym-water-text'), document.getElementById('gym-water-text-2')];
+    waterTexts.forEach(el => {
+      if (el) el.textContent = `${water.toFixed(1)}L / 2.5L`;
+    });
+    
+    const waterBars = [document.getElementById('gym-water-bar'), document.getElementById('gym-water-bar-2')];
+    const pct = Math.min(100, (water / 2.5) * 100);
+    waterBars.forEach(el => {
+      if (el) el.style.width = `${pct}%`;
+    });
+    
+    const rwContainer = document.getElementById('recent-workouts-container');
+    if (rwContainer) {
+      rwContainer.innerHTML = '';
+      const rw = state.stats?.recentWorkouts || [];
+      if (!rw.length) {
+        rwContainer.innerHTML = '<p class="muted" style="text-align: center; margin: 20px 0;">No workouts logged yet.</p>';
+      } else {
+        rw.forEach(w => {
+          const div = document.createElement('div');
+          div.className = 'flex-between';
+          div.style.padding = '10px 0';
+          div.style.borderBottom = '1px solid var(--border)';
+          div.innerHTML = `<span>${escapeHtml(w.name)}</span><span class="muted">${escapeHtml(w.details)}</span>`;
+          rwContainer.appendChild(div);
+        });
+        if (rwContainer.lastElementChild) {
+          rwContainer.lastElementChild.style.borderBottom = 'none';
+        }
+      }
+    }
   }
 
   function openAddTaskModal() {
@@ -676,10 +850,15 @@
           <span class="pill">Planned</span>
         </div>
       </div>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-        <span class="badge badge--green">${escapeHtml(task.priority || "Medium")}</span>
-        <span class="checkbox-ring" role="button" tabindex="0" aria-label="Toggle ${escapeHtml(task.title)}"></span>
-      </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+          ${isUrgent ? '<span class="badge badge--red">Urgent</span>' : ''}
+          <div style="display: flex; align-items: center; gap: 12px; justify-content: flex-end;">
+            <button class="icon-btn del-dash-task-btn" style="color: var(--red); padding: 4px;" aria-label="Delete">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+            <span class="checkbox-ring" role="button" tabindex="0" aria-label="Toggle ${escapeHtml(task.title)}"></span>
+          </div>
+        </div>
     `;
     
     // Find where to insert it. If there's a section title for Tasks/Priorities, put it after. 
@@ -877,6 +1056,46 @@
         claimButton.disabled = completedHabits < 3;
         claimButton.textContent = completedHabits >= 3 ? "🎁 Claim" : `🎯 ${completedHabits}/3`;
       }
+    }
+
+    const fSess = document.getElementById('insight-focus-sessions');
+    if (fSess) fSess.textContent = state.stats?.focusSessions || 0;
+    const fMin = document.getElementById('insight-focus-minutes');
+    if (fMin) fMin.textContent = state.stats?.focusMinutes || 0;
+    
+    const donut = document.getElementById('insights-donut');
+    if (donut) {
+       let low = 0, med = 0, high = 0, urg = 0;
+       Object.values(state.tasks).forEach(t => {
+           if (t.completed) return;
+           const p = (t.priority || "Medium").toLowerCase();
+           if (p === 'low') low++;
+           else if (p === 'high') high++;
+           else if (p === 'urgent') urg++;
+           else med++;
+       });
+       const tot = low + med + high + urg || 1; 
+       
+       const lEl = document.getElementById('leg-low');
+       if(lEl) lEl.innerHTML = `<span class="legend-dot" style="background: #3d444d;"></span> Low (${low})`;
+       const mEl = document.getElementById('leg-med');
+       if(mEl) mEl.innerHTML = `<span class="legend-dot" style="background: var(--accent);"></span> Medium (${med})`;
+       const hEl = document.getElementById('leg-high');
+       if(hEl) hEl.innerHTML = `<span class="legend-dot" style="background: var(--orange);"></span> High (${high})`;
+       const uEl = document.getElementById('leg-urg');
+       if(uEl) uEl.innerHTML = `<span class="legend-dot" style="background: var(--red);"></span> Urgent (${urg})`;
+       
+       const pLow = (low / tot) * 100;
+       const pMed = (med / tot) * 100;
+       const pHigh = (high / tot) * 100;
+       const pUrg = (urg / tot) * 100;
+       
+       donut.style.background = `conic-gradient(
+         #3d444d 0% ${pLow}%, 
+         var(--accent) ${pLow}% ${pLow + pMed}%, 
+         var(--orange) ${pLow + pMed}% ${pLow + pMed + pHigh}%, 
+         var(--red) ${pLow + pMed + pHigh}% 100%
+       )`;
     }
 
     const statsValues = Array.from(document.querySelectorAll("p, strong")).filter((el) =>
