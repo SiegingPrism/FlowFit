@@ -3,6 +3,11 @@
   const DEFAULT_STATE = {
     tasks: {},
     habits: {},
+    templates: {
+      "push-1": { name: "Push", details: "4 exercises · PPL" },
+      "pull-1": { name: "Pull", details: "4 exercises · PPL" },
+      "legs-1": { name: "Legs", details: "4 exercises · PPL" },
+    },
     connectedApps: {
       googleFit: false,
       gmailSend: false,
@@ -31,6 +36,7 @@
   initializeProfile();
   initializeDashboardTasks();
   initializeDashboardHabits();
+  initializeHealthTemplates();
   initializeTaskCards();
   initializeHabitRows();
   initializeAddTaskButtons();
@@ -366,14 +372,27 @@
 
         // Specific named button actions
         if (txt === "plan") {
-          toast("Workout planned and added to schedule!");
+          const tmplName = btn.dataset.plan || "Workout";
+          const id = slugify(`plan-${tmplName}-${Date.now()}`);
+          if (!state.tasks) state.tasks = {};
+          state.tasks[id] = {
+            title: `Log ${tmplName} Workout`,
+            completed: false,
+            createdAt: new Date().toISOString(),
+            priority: "Medium",
+            duration: "60"
+          };
+          saveState();
+          toast(`${tmplName} added to your Tasks!`);
+          refreshDashboardSummaries();
           return;
         } else if (txt === "connect") {
           toast("Google connection flow will be wired to OAuth in production.");
           return;
         } else if (txt === "log" || txt === "+ log" || txt === "quick log") {
           // Both FAB and standard quick log buttons
-          state.stats.workoutsLogged += 1;
+          if (!state.stats) state.stats = { workoutsLogged: 0, focusMinutes: 75 };
+          state.stats.workoutsLogged = (parseInt(state.stats.workoutsLogged) || 0) + 1;
           saveState();
           refreshWorkoutNodes();
           toast("Workout logged!");
@@ -508,6 +527,51 @@
         refreshDashboardSummaries();
       });
       container.appendChild(span);
+    });
+  }
+
+  function initializeHealthTemplates() {
+    const container = document.getElementById("templates-container");
+    if (!container) return;
+    
+    container.innerHTML = "";
+    
+    const addBtn = document.getElementById("add-template-btn");
+    if (addBtn && !addBtn.dataset.wired) {
+      addBtn.dataset.wired = "true";
+      addBtn.addEventListener("click", () => {
+         const name = prompt("Enter template name (e.g., Full Body, Core):");
+         if (!name) return;
+         const details = prompt("Enter details (e.g., 5 exercises · Strength):") || "Custom Workout";
+         
+         const id = slugify(`${name}-${Date.now()}`);
+         if (!state.templates) state.templates = {};
+         state.templates[id] = { name, details };
+         saveState();
+         toast("Template saved!");
+         initializeHealthTemplates();
+      });
+    }
+
+    const tList = Object.entries(state.templates || {}).map(([id, t]) => ({ id, ...t }));
+    if (!tList.length) {
+      container.innerHTML = `<p class="muted" style="margin:0;font-size:0.8rem;">No templates yet.</p>`;
+      return;
+    }
+
+    tList.forEach(t => {
+      const row = document.createElement("div");
+      row.className = "flex-between";
+      row.style.padding = "10px 0";
+      row.style.borderBottom = "1px solid var(--border)";
+      row.innerHTML = `
+        <div>
+          <strong>${escapeHtml(t.name)}</strong>
+          <p class="muted" style="margin: 4px 0 0; font-size: 0.78rem;">${escapeHtml(t.details)}</p>
+        </div>
+        <button type="button" class="btn btn--ghost" style="padding: 8px 14px; font-size: 0.8rem;" data-plan="${escapeHtml(t.name)}">Plan</button>
+      `;
+      container.appendChild(row);
     });
   }
 
@@ -776,17 +840,6 @@
   }
 
   function initializeQuickHealthLog() {
-    const quickLogButton = Array.from(document.querySelectorAll(".btn")).find((button) =>
-      /quick log/i.test(button.textContent)
-    );
-    if (!quickLogButton) return;
-
-    quickLogButton.addEventListener("click", () => {
-      state.stats.workoutsLogged += 1;
-      saveState();
-      refreshWorkoutNodes();
-      toast("Workout logged");
-    });
     refreshWorkoutNodes();
   }
 
